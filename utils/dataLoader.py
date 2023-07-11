@@ -47,8 +47,8 @@ class GeoLocationDataset(Dataset):
     def __getitem__(self, index):
         image, _ = self.dataset[index]  # Ignore the original label
         folder_name = self.dataset.classes[self.dataset.targets[index]]
-        longitude, latitude = parse_folder_name(folder_name)  # Parse folder name to get the geo-coordinates
-        return self.transform(image).to(self.device), torch.tensor([longitude, latitude]).to(self.device)
+        latitude, longitude = parse_folder_name(folder_name)  # Parse folder name to get the geo-coordinates
+        return self.transform(image).to(self.device), torch.tensor([latitude, longitude]).to(self.device)
 
     def __len__(self):
         return len(self.dataset)

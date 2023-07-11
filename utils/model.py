@@ -145,14 +145,13 @@ if __name__ == "__main__":
     print("Cuda is", "available" if torch.cuda.is_available() else "not available")
 
     num_classes = 2  # Longitude and Latitude
-    num_epochs = 10
-    learning_rate = 0.01
+    num_epochs = 50
+    learning_rate = 0.05
     dir = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
 
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((400, 170)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
     ])
 
     train_loader, test_loader = get_dataloaders(dir, transform, 128, num_workers=2, split_set=True)

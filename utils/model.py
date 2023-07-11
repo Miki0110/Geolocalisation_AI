@@ -14,16 +14,16 @@ import numpy as np
 # Function calculates the distance in km between two points on Earth given their latitudes and longitudes
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371.0  # Radius of the Earth in km
-    lat1_rad = np.radians(lat1)
-    lon1_rad = np.radians(lon1)
-    lat2_rad = np.radians(lat2)
-    lon2_rad = np.radians(lon2)
+    lat1_rad = torch.deg2rad(lat1)
+    lon1_rad = torch.deg2rad(lon1)
+    lat2_rad = torch.deg2rad(lat2)
+    lon2_rad = torch.deg2rad(lon2)
 
     dlon = lon2_rad - lon1_rad
     dlat = lat2_rad - lat1_rad
 
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon / 2) ** 2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    a = torch.sin(dlat / 2) ** 2 + torch.cos(lat1_rad) * torch.cos(lat2_rad) * torch.sin(dlon / 2) ** 2
+    c = 2 * torch.arctan2(torch.sqrt(a), torch.sqrt(1 - a))
 
     distance = R * c
     return distance
@@ -61,19 +61,20 @@ class GeoLocationClassifier(torch.nn.Module):
 
 
 # Loss function for the model
-class EuclideanLoss(torch.nn.Module):
+class HaversineLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, preds, labels):
-        return ((preds - labels)**2).sum(dim=-1).sqrt().mean()
+        lat1, lon1 = preds[:, 0], preds[:, 1]
+        lat2, lon2 = labels[:, 0], labels[:, 1]
+        return haversine_distance(lat1, lon1, lat2, lon2).mean()
 
 
 def train_model(model, dataloader, criterion, optimizer, num_epochs):
     model.train()  # set the model to training mode
     for epoch in range(num_epochs):
         running_loss = 0.0
-        total_distance_error = [0.0, 0]  # Total error in km for this epoch
         progress_bar = tqdm(enumerate(dataloader), total=len(dataloader))
         for i, (inputs, labels) in progress_bar:
             inputs = inputs.to(model.device)
@@ -88,24 +89,20 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
 
             # backward + optimize
             loss.backward()
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
 
-            # Calculate Haversine distance error for this batch
-            outputs_cpu = outputs.detach().cpu().numpy()
-            labels_cpu = labels.detach().cpu().numpy()
+            progress_bar.set_description(f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} km')
 
-            for pred, true in zip(outputs_cpu, labels_cpu):
-                total_distance_error[0] += haversine_distance(pred[0], pred[1], true[0], true[1])
-                total_distance_error[1] += 1
-
-            progress_bar.set_description(f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} Error: {total_distance_error[0]/total_distance_error[1]:.4f} km')
+            # Delete tensors that are no longer needed
+            del inputs, labels, outputs, loss
 
         epoch_loss = running_loss / len(dataloader.dataset)
-        average_distance_error = total_distance_error[0] / total_distance_error[1]
         print(
-            f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f}, Average Error: {average_distance_error:.4f} km')
+            f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} km')
 
         os.makedirs('model_checkpoints', exist_ok=True)
         # Save model state after each epoch
@@ -149,7 +146,7 @@ if __name__ == "__main__":
 
     num_classes = 2  # Longitude and Latitude
     num_epochs = 10
-    learning_rate = 0.001
+    learning_rate = 0.01
     dir = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
 
     transform = transforms.Compose([
@@ -158,12 +155,12 @@ if __name__ == "__main__":
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
     ])
 
-    train_loader, test_loader = get_dataloaders(dir, transform, 64, num_workers=2, split_set=True)
+    train_loader, test_loader = get_dataloaders(dir, transform, 128, num_workers=2, split_set=True)
 
     model = GeoLocationClassifier(num_classes)
 
     # Define a loss function
-    criterion = EuclideanLoss()
+    criterion = HaversineLoss()
 
     # Define an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)

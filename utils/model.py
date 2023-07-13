@@ -6,9 +6,11 @@ from tqdm import tqdm
 from torchvision import models
 from packaging import version
 import torch.optim as optim
+import sys
 from utils.dataLoader import get_dataloaders
 from torchvision import transforms
-import numpy as np
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 # Function calculates the distance in km between two points on Earth given their latitudes and longitudes
@@ -28,6 +30,7 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     distance = R * c
     return distance
 
+
 class GeoLocationClassifier(torch.nn.Module):
     """
     GeoLocationClassifier class
@@ -40,10 +43,10 @@ class GeoLocationClassifier(torch.nn.Module):
         # Check torchvision version
         if version.parse(torchvision.__version__) >= version.parse('0.13'):
             # Load pre-trained ResNet model
-            self.resnet = models.resnet50(weights="IMAGENET1K_V2")
+            self.resnet = models.resnet152(weights="IMAGENET1K_V2")
         else:
             # Load pre-trained ResNet model
-            self.resnet = models.resnet50(pretrained=True)
+            self.resnet = models.resnet152(pretrained=True)
 
         # Freeze the layers
         for param in self.resnet.parameters():
@@ -57,24 +60,23 @@ class GeoLocationClassifier(torch.nn.Module):
         self.resnet = self.resnet.to(self.device)
 
     def forward(self, x):
-        return self.resnet(x)
+        x = self.resnet(x)
+        return torch.nn.functional.log_softmax(x, dim=1)
 
 
-# Loss function for the model
-class HaversineLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, preds, labels):
-        lat1, lon1 = preds[:, 0], preds[:, 1]
-        lat2, lon2 = labels[:, 0], labels[:, 1]
-        return haversine_distance(lat1, lon1, lat2, lon2).mean()
+def calculate_accuracy(outputs, labels):
+    """Calculate classification accuracy."""
+    _, pred = torch.max(outputs, dim=1)
+    target = torch.argmax(labels, dim=1)
+    correct = pred.eq(target).sum().item()
+    return correct / len(pred)
 
 
 def train_model(model, dataloader, criterion, optimizer, num_epochs):
     model.train()  # set the model to training mode
     for epoch in range(num_epochs):
         running_loss = 0.0
+        running_acc = 0.0
         progress_bar = tqdm(enumerate(dataloader), total=len(dataloader))
         for i, (inputs, labels) in progress_bar:
             inputs = inputs.to(model.device)
@@ -94,15 +96,18 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
+            running_acc += calculate_accuracy(outputs, labels) * inputs.size(0)
 
-            progress_bar.set_description(f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} km')
+            progress_bar.set_description(
+                f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} Accuracy: {running_acc / (i + 1):.4f}')
 
             # Delete tensors that are no longer needed
             del inputs, labels, outputs, loss
 
         epoch_loss = running_loss / len(dataloader.dataset)
+        epoch_acc = running_acc / len(progress_bar)
         print(
-            f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} km')
+            f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} Average Accuracy: {epoch_acc:.4f}')
 
         os.makedirs('model_checkpoints', exist_ok=True)
         # Save model state after each epoch
@@ -111,6 +116,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
+            'accuracy': epoch_acc,
         }, f'model_checkpoints/checkpoint_{epoch}.pth')
 
         torch.cuda.empty_cache()
@@ -144,28 +150,26 @@ if __name__ == "__main__":
     # Check for cuda
     print("Cuda is", "available" if torch.cuda.is_available() else "not available")
 
-    num_classes = 2  # Longitude and Latitude
+    # Training session
     num_epochs = 50
     learning_rate = 0.05
-    dir = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
+    dir = r'C:\Users\mikip\Pictures\50k_countryonly'
+    num_classes = len(os.listdir(dir))  # amount of countries
 
     transform = transforms.Compose([
-        transforms.Resize((400, 170)),
+        transforms.Resize((280, 640)),
         transforms.ToTensor(),
     ])
 
-    train_loader, test_loader = get_dataloaders(dir, transform, 128, num_workers=2, split_set=True)
+    train_loader = get_dataloaders(dir, transform, 64, num_workers=0, split_set=False)
 
     model = GeoLocationClassifier(num_classes)
 
     # Define a loss function
-    criterion = HaversineLoss()
+    criterion = torch.nn.CrossEntropyLoss()
 
     # Define an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     # Call the training function
     train_model(model, train_loader, criterion, optimizer, num_epochs)
-
-    # Call the testing function
-    test_model(model, test_loader, criterion)

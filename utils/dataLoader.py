@@ -1,13 +1,15 @@
 import os
+import numpy as np
 import torch
+import sys
+from geopy.geocoders import Nominatim
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
 from torch.utils.data import Dataset
-from geopy.geocoders import Nominatim
 from torch.utils.data import DataLoader, random_split
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Function to get the coordinates of a country
 def get_country_coordinates(country):
     geolocator = Nominatim(user_agent="country_converter")
     location = geolocator.geocode(country, exactly_one=True)
@@ -19,9 +21,10 @@ def get_country_coordinates(country):
     longitude = location.longitude
     return latitude, longitude
 
-
+# Load the coordinates from the cache
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+COORDINATES_CACHE = np.load(os.path.join(cur_dir, 'country_cord.npy'), allow_pickle=True).item()
 # Function to parse the folder name and get the coordinates
-COORDINATES_CACHE = {}  # Cache the coordinates to avoid repeated API calls
 def parse_folder_name(folder_name):
     # If the coordinates are already in the cache, use them
     if folder_name in COORDINATES_CACHE:
@@ -42,13 +45,21 @@ class GeoLocationDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.dataset = ImageFolder(root=root_dir)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Add this line
+        self.datapos = []
+        for data_class in self.dataset.classes:
+            self.datapos.append(COORDINATES_CACHE[data_class])
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __getitem__(self, index):
         image, _ = self.dataset[index]  # Ignore the original label
-        folder_name = self.dataset.classes[self.dataset.targets[index]]
-        latitude, longitude = parse_folder_name(folder_name)  # Parse folder name to get the geo-coordinates
-        return self.transform(image).to(self.device), torch.tensor([latitude, longitude]).to(self.device)
+        # For getting the name of the folder
+        # folder_name = self.dataset.classes[self.dataset.targets[index]]
+
+        # Create an empty array for the label
+        country = torch.zeros(len(COORDINATES_CACHE))
+        # Input the index to the correct position
+        country[self.dataset.targets[index]] = 1
+        return self.transform(image).to(self.device), country.to(self.device)
 
     def __len__(self):
         return len(self.dataset)
@@ -83,9 +94,9 @@ if __name__ == "__main__":
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
     ])
-    dir = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
+    dir = r'C:\Users\mikip\Pictures\50k_countryonly'
     # Create datasets
-    datasets = get_dataloaders(root_dir=dir, transform=transform, batch_size=12, split_set=True)
+    datasets = get_dataloaders(root_dir=dir, transform=transform, batch_size=12, num_workers= 0, split_set=True)
 
     for data_loader in datasets:
         data_iter = iter(data_loader)

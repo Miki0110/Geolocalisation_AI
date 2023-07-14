@@ -7,6 +7,7 @@ from torchvision.datasets import ImageFolder
 from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader, random_split
+import albumentations as A
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -54,12 +55,13 @@ class GeoLocationDataset(Dataset):
         image, _ = self.dataset[index]  # Ignore the original label
         # For getting the name of the folder
         # folder_name = self.dataset.classes[self.dataset.targets[index]]
-
-        # Create an empty array for the label
-        country = torch.zeros(len(COORDINATES_CACHE))
-        # Input the index to the correct position
-        country[self.dataset.targets[index]] = 1
-        return self.transform(image).to(self.device), country.to(self.device)
+        # Create the label
+        country = self.dataset.targets[index]
+        country = torch.tensor(country)
+        # Apply the transformation
+        if self.transform is not None:
+            image = self.transform(image=np.array(image))['image']
+        return image.to(self.device), country.to(self.device)
 
     def __len__(self):
         return len(self.dataset)

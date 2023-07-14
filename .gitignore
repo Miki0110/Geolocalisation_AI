@@ -1,5 +1,7 @@
 # Ignore pth files
 *.pth
+*.npy
 
 # Ignore .idea folder
 /.idea
+/utils/runs

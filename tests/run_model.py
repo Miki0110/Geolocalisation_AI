@@ -35,34 +35,26 @@ COORDINATES_CACHE = np.load(npy_file_path, allow_pickle=True).item()
 print(COORDINATES_CACHE)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-"""
+
 # Initialize the model
 model = GeoLocationClassifier(num_classes=len(COORDINATES_CACHE)).to(device)
 
 # Load the saved model weights
 model_folder = os.path.join(parent_dir, 'utils', 'model_checkpoints')
-checkpoint = torch.load(os.path.join(model_folder, "checkpoint_49.pth"))  # path to the saved model
+checkpoint = torch.load(os.path.join(model_folder, "checkpoint_15.pth"))  # path to the saved model
 model.load_state_dict(checkpoint['model_state_dict'])
 
 # Set the model to evaluation mode
 model.eval()
-"""
+
 # Transform for the images loaded
 transform = T.Compose([
     T.ToPILImage(),  # because the image is a numpy array
-    T.Resize((170, 400)),
+    T.Resize((200, 440)),
     T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-transform = A.Compose([
-        A.Resize(200, 440),
-        A.HorizontalFlip(p=0.5),  # Horizontal flip
-        A.RandomBrightnessContrast(p=0.2),  # Random brightness and contrast
-        A.Rotate(limit=(-20, 20), p=0.5),  # Random rotation
-        A.CoarseDropout(max_holes=4, max_height=40, max_width=40, p=0.5),  # Change the image by cutting out parts
-        A.GaussNoise(p=0.5),  # Add gaussian noise
-        ToTensorV2(),
-    ])
 
 # Get all the images in the folder
 all_images = get_all_images(image_path)
@@ -75,21 +67,22 @@ with torch.no_grad():
         img = cv2.imread(image_path)
         pil_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         # Apply the image to the model
-        inputs = transform(image=np.array(pil_img))['image'].unsqueeze(0).to(device)
+        inputs = transform(np.array(pil_img)).unsqueeze(0).to(device)
 
         temp_t = T.ToPILImage()
-        torch_vers = temp_t(transform(image=np.array(img))['image']).show()
+        #torch_vers = temp_t(transform(np.array(img))).show()
 
-        #outputs = model(inputs)
+        outputs = model(inputs)
+
         # Apply softmax
-        #outputs = torch.nn.functional.softmax(outputs, dim=1)
+        outputs = torch.nn.functional.softmax(outputs, dim=1)
         # Pick the 5 largest values
-        #_, preds = torch.topk(outputs, 5, dim=1)
+        _, preds = torch.topk(outputs, 5, dim=1)
 
         # Display the image and the prediction
         cv2.imshow("Image", img)
-        #for i, pred in enumerate(preds[0]):
-        #    print(f"Prediction {i + 1}: {list(COORDINATES_CACHE.keys())[pred.item()]}")
-        #    print(f"Probability: {outputs[0][pred.item()].item()}")
-        #print("Actual:", os.path.basename(os.path.dirname(image_path)))
+        for i, pred in enumerate(preds[0]):
+            print(f"Prediction {i + 1}: {list(COORDINATES_CACHE.keys())[pred.item()]}")
+            print(f"Probability: {outputs[0][pred.item()].item()}")
+        print("Actual:", os.path.basename(os.path.dirname(image_path)))
         cv2.waitKey(0)

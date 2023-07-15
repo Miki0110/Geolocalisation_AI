@@ -16,24 +16,6 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-# Function calculates the distance in km between two points on Earth given their latitudes and longitudes
-def haversine_distance(lat1, lon1, lat2, lon2):
-    R = 6371.0  # Radius of the Earth in km
-    lat1_rad = torch.deg2rad(lat1)
-    lon1_rad = torch.deg2rad(lon1)
-    lat2_rad = torch.deg2rad(lat2)
-    lon2_rad = torch.deg2rad(lon2)
-
-    dlon = lon2_rad - lon1_rad
-    dlat = lat2_rad - lat1_rad
-
-    a = torch.sin(dlat / 2) ** 2 + torch.cos(lat1_rad) * torch.cos(lat2_rad) * torch.sin(dlon / 2) ** 2
-    c = 2 * torch.arctan2(torch.sqrt(a), torch.sqrt(1 - a))
-
-    distance = R * c
-    return distance
-
-
 class GeoLocationClassifier(torch.nn.Module):
     """
     GeoLocationClassifier class
@@ -80,7 +62,8 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
     model.train()  # set the model to training mode
     for epoch in range(num_epochs):
         running_loss = 0.0
-        running_acc = 0.0
+        running_corrects = 0.0
+        total_samples = 0
         progress_bar = tqdm(enumerate(dataloader), total=len(dataloader))
         for i, (inputs, labels) in progress_bar:
             inputs = inputs.to(model.device)
@@ -98,16 +81,19 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
-            running_acc += calculate_accuracy(outputs, labels) * inputs.size(0)
+
+            _, preds = torch.max(outputs, 1)
+            running_corrects += torch.sum(preds == labels.data)
+            total_samples += labels.size(0)
 
             progress_bar.set_description(
-                f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} Accuracy: {running_acc / (i + 1):.4f}')
+                f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} Accuracy: {running_corrects.double() / total_samples:.4f}')
 
             # Delete tensors that are no longer needed
             del inputs, labels, outputs, loss
 
         epoch_loss = running_loss / len(dataloader.dataset)
-        epoch_acc = running_acc / len(progress_bar)
+        epoch_acc = running_corrects.double() / total_samples
         print(
             f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} Average Accuracy: {epoch_acc:.4f}')
         # Write it into the tensorboard

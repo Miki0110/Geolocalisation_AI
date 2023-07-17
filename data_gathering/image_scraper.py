@@ -1,5 +1,6 @@
 import os
-import time
+import requests
+import random
 from pathlib import Path
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -7,10 +8,11 @@ from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains as AC
 import atexit
 import pycountry
 
-clutter = ['address', 'adnotice', 'ad', 'controls', 'map_canvas', 'controls', 'share', 'aswift_1_host', "minimaximize"]
+clutter = ['titlecard', 'id-play', 'minimap']
 
 landscape_classes = {1: "Mountain/hill",
                      2: "Forest/wood",
@@ -25,7 +27,17 @@ landscape_classes = {1: "Mountain/hill",
                      11: "Snow/Ice"}
 
 
+def get_random_coordinates():
+    # Latitude (y) can be between -90 and 90
+    latitude = random.uniform(-30, 90)
+    # Longitude (x) can be between -180 and 180
+    longitude = random.uniform(-180, 180)
+    return latitude, longitude
+
 def save_data_on_exit():
+    if driver:
+        driver.quit()
+        print("Driver closed!")
     if data_list:
         # Check if file exists
         csv_exists = os.path.isfile('image_data.csv')
@@ -59,23 +71,13 @@ def get_next_filename(image_dir, country):
     return f"{country}_{highest_number + 1}.png"
 
 
-def translate_country_name(name):
-    try:
-        country = pycountry.countries.search_fuzzy(name)
-        # It returns a list of possible countries, we just take the first one as most likely
-        return country[0].name
-    except LookupError:
-        print(f"Could not translate country name: {name}")
-        return name
-
-
 # Get current folder
 curr_dir = os.path.dirname(os.path.abspath(__file__))
 # initialize webdriver
 driver = webdriver.Chrome(os.path.join(curr_dir, 'chromedriver.exe'))
 
-# URL of the website
-url = "https://randomstreetview.com/"
+# URL
+URL = 'https://www.google.com/maps/'
 
 # List to store the data
 data_list = []
@@ -88,13 +90,24 @@ image_dir = "images"
 os.makedirs(image_dir, exist_ok=True)
 
 for i in range(num_images):
-    driver.get(url)
+    lat, lon = get_random_coordinates()
+    driver.get(URL+f'@{lat},{lon},3z')
     # Wait for the page to load
     try:
-        element_present = EC.presence_of_element_located((By.ID, clutter[0]))
+        element_present = EC.presence_of_element_located((By.CLASS_NAME, 'q2sIQ'))
         WebDriverWait(driver, 5).until(element_present)
     except Exception as e:
         print(f"Timed out waiting for page to load: {str(e)}")
+
+    # Find pegman (Street View icon)
+    pegman = driver.find_element_by_class_name('q2sIQ')
+
+    # Generate random location on screen for drop
+    drop_x = -random.randint(50, 700)  # Adjust these numbers according to your screen resolution
+    drop_y = -random.randint(50, 500)  # Adjust these numbers according to your screen resolution
+
+    # Perform drag and drop action
+    AC(driver).drag_and_drop_by_offset(pegman, drop_x, drop_y).perform()
 
     # Hide the adds and other clutter
     for element_id in clutter:
@@ -105,6 +118,8 @@ for i in range(num_images):
             print(f"Could not hide element with id '{element_id}'. Error: {str(e)}")
     # parse the page content
     soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    # TODO: Get the coordinates from the URL
 
     # get user input for classes
     classes = []
@@ -117,12 +132,7 @@ for i in range(num_images):
         classes.append(class_val)
 
     # extract location info
-    location_info = soup.find('div', id='address')
-    if location_info is None:
-        print("Could not find location info")
-        continue
-    country = location_info.text.split(',')[-1]
-    country = translate_country_name(country.strip())
+    # TODO: get the country name from the coordinates
 
     # define a filename based on the country and coordinates
     filename = get_next_filename(image_dir, country)
@@ -135,6 +145,8 @@ for i in range(num_images):
     data_list.append({
         'country': country,
         'image_path': filename,
+        'latitude': lat,
+        'longitude': lon,
         landscape_classes[1]: classes[0],
         landscape_classes[2]: classes[1],
         landscape_classes[3]: classes[2],

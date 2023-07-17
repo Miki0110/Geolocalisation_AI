@@ -41,7 +41,7 @@ model = GeoLocationClassifier(num_classes=len(COORDINATES_CACHE)).to(device)
 
 # Load the saved model weights
 model_folder = os.path.join(parent_dir, 'utils', 'model_checkpoints')
-checkpoint = torch.load(os.path.join(model_folder, "checkpoint_15.pth"))  # path to the saved model
+checkpoint = torch.load(os.path.join(model_folder, "early_101-2.pth"))  # path to the saved model
 model.load_state_dict(checkpoint['model_state_dict'])
 
 # Set the model to evaluation mode

@@ -56,7 +56,7 @@ def calculate_accuracy(outputs, labels):
     return correct / len(pred)
 
 
-def train_model(model, dataloader, criterion, optimizer, num_epochs):
+def train_model(model, dataloader, criterion, optimizer, num_epochs, start_epoch=0):
     """
     Trainer for the model
     Args:
@@ -71,7 +71,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
     writer = SummaryWriter(f'runs/training_{curr_time}')
 
     model.train()  # set the model to training mode
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         running_loss = 0.0
         running_corrects = 0.0
         total_samples = 0
@@ -101,7 +101,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
 
             progress_bar.set_description(
                 f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} '
-                f'Accuracy: {running_corrects.double() / total_samples:.4f}')
+                f'Accuracy: {(running_corrects.double() / total_samples) * 100:.2f}%')
 
             # Delete tensors that are no longer needed
             del inputs, labels, outputs, loss
@@ -109,11 +109,11 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
         epoch_loss = running_loss / len(dataloader.dataset)
         epoch_acc = running_corrects.double() / total_samples
         print(f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} '
-            f'Average Accuracy: {epoch_acc:.4f}')
+            f'Average Accuracy: {epoch_acc*100:.2f}%')
 
         # Write it into the tensorboard
         writer.add_scalar('Training Loss', epoch_loss, epoch)
-        writer.add_scalar('Training Accuracy', epoch_acc, epoch)
+        writer.add_scalar('Training Accuracy', epoch_acc*100, epoch)
 
         os.makedirs('model_checkpoints', exist_ok=True)
         # Save model state after each epoch
@@ -131,6 +131,25 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
     print('Training complete')
     writer.close()
     return model
+
+
+def load_checkpoint(model, optimizer, filename):
+    """
+    For Loading a checkpoint
+    """
+    start_epoch = 0
+    if os.path.isfile(filename):
+        print("=> loading checkpoint '{}'".format(filename))
+        checkpoint = torch.load(filename)
+        start_epoch = checkpoint['epoch'] + 1
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(filename, checkpoint['epoch']))
+    else:
+        print("=> no checkpoint found at '{}'".format(filename))
+
+    return model, optimizer, start_epoch
 
 
 # Debugging to check if the model works and cuda is available
@@ -166,5 +185,15 @@ if __name__ == "__main__":
     # Define an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+    # Ask the user if they want to load from a checkpoint
+    load_checkpoint_decision = input("Do you want to load from a previous checkpoint? (yes/no): ")
+    start_epoch = 0
+    # If they do, ask them which epoch
+    if (load_checkpoint_decision.lower() == "yes") or (load_checkpoint_decision.lower() == "y"):
+        epoch_number = input("Please enter the epoch of the checkpoint: ")
+        checkpoint_file = f'model_checkpoints/checkpoint_{epoch_number}.pth'
+        # Load the checkpoint
+        model, optimizer, start_epoch = load_checkpoint(model, optimizer, checkpoint_file)
+
     # Call the training function
-    train_model(model, train_loader, criterion, optimizer, num_epochs)
+    train_model(model, train_loader, criterion, optimizer, num_epochs, start_epoch=start_epoch)

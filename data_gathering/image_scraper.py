@@ -1,5 +1,5 @@
 import os
-import requests
+import time
 import random
 from pathlib import Path
 import pandas as pd
@@ -10,7 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains as AC
 import atexit
-import pycountry
+from urllib.parse import urlparse
+from geopy.geocoders import Nominatim
 
 clutter = ['titlecard', 'id-play', 'minimap']
 
@@ -31,13 +32,10 @@ def get_random_coordinates():
     # Latitude (y) can be between -90 and 90
     latitude = random.uniform(-30, 90)
     # Longitude (x) can be between -180 and 180
-    longitude = random.uniform(-180, 180)
+    longitude = random.uniform(-90, 160)
     return latitude, longitude
 
 def save_data_on_exit():
-    if driver:
-        driver.quit()
-        print("Driver closed!")
     if data_list:
         # Check if file exists
         csv_exists = os.path.isfile('image_data.csv')
@@ -51,7 +49,13 @@ def save_data_on_exit():
             df.to_csv('image_data.csv', mode='w', header=True, index=False)
 
         print('Data saved!')
+def quit_driver():
+    if driver:
+        driver.quit()
+        print("Driver closed!")
+# Register the functions to be called on exit
 atexit.register(save_data_on_exit)
+atexit.register(quit_driver)
 
 
 def get_next_filename(image_dir, country):
@@ -71,97 +75,109 @@ def get_next_filename(image_dir, country):
     return f"{country}_{highest_number + 1}.png"
 
 
-# Get current folder
-curr_dir = os.path.dirname(os.path.abspath(__file__))
-# initialize webdriver
-driver = webdriver.Chrome(os.path.join(curr_dir, 'chromedriver.exe'))
+if __name__ == "__main__":
+    geolocator = Nominatim(user_agent="my-app")
+    # Get current folder
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    # initialize webdriver
+    driver = webdriver.Chrome(os.path.join(curr_dir, 'chromedriver.exe'))
 
-# URL
-URL = 'https://www.google.com/maps/'
+    # URL
+    URL = 'https://www.google.com/maps/'
 
-# List to store the data
-data_list = []
+    # List to store the data
+    data_list = []
 
-# Define the number of images you want to download
-num_images = 1000
+    # Define the number of images you want to download
+    num_images = 1000
 
-# Directory where you want to store the images
-image_dir = "images"
-os.makedirs(image_dir, exist_ok=True)
+    # Directory where you want to store the images
+    image_dir = "images"
+    os.makedirs(image_dir, exist_ok=True)
 
-for i in range(num_images):
-    lat, lon = get_random_coordinates()
-    driver.get(URL+f'@{lat},{lon},3z')
-    # Wait for the page to load
-    try:
-        element_present = EC.presence_of_element_located((By.CLASS_NAME, 'q2sIQ'))
-        WebDriverWait(driver, 5).until(element_present)
-    except Exception as e:
-        print(f"Timed out waiting for page to load: {str(e)}")
-
-    # Find pegman (Street View icon)
-    pegman = driver.find_element_by_class_name('q2sIQ')
-
-    # Generate random location on screen for drop
-    drop_x = -random.randint(50, 700)  # Adjust these numbers according to your screen resolution
-    drop_y = -random.randint(50, 500)  # Adjust these numbers according to your screen resolution
-
-    # Perform drag and drop action
-    AC(driver).drag_and_drop_by_offset(pegman, drop_x, drop_y).perform()
-
-    # Hide the adds and other clutter
-    for element_id in clutter:
+    for i in range(num_images):
+        lat, lon = get_random_coordinates()
+        driver.get(URL+f'@{lat},{lon},3z')
+        # Wait for the page to load
         try:
-            element = driver.find_element_by_id(element_id)
-            driver.execute_script("arguments[0].style.visibility='hidden';", element)
+            element_present = EC.presence_of_element_located((By.CLASS_NAME, 'q2sIQ'))
+            WebDriverWait(driver, 5).until(element_present)
         except Exception as e:
-            print(f"Could not hide element with id '{element_id}'. Error: {str(e)}")
-    # parse the page content
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+            print(f"Timed out waiting for page to load: {str(e)}")
 
-    # TODO: Get the coordinates from the URL
+        # Find pegman (Street View icon)
+        pegman = driver.find_element_by_class_name('q2sIQ')
 
-    # get user input for classes
-    classes = []
-    for j in range(1, 12):  # 1 to 10
-        class_input = input(f"Is it {landscape_classes[j]} (y,n): ")
-        if class_input == "y":
-            class_val = 1
-        else:
-            class_val = 0
-        classes.append(class_val)
+        # Generate random location on screen for drop
+        drop_x = -random.randint(50, 700)  # Adjust these numbers according to your screen resolution
+        drop_y = -random.randint(50, 500)  # Adjust these numbers according to your screen resolution
 
-    # extract location info
-    # TODO: get the country name from the coordinates
+        # Perform drag and drop action
+        AC(driver).drag_and_drop_by_offset(pegman, drop_x, drop_y).perform()
+        # Wait for the URL to change
+        try:
+            WebDriverWait(driver, 5).until(EC.url_contains("/data=!"))
+        except Exception as e:
+            print(f"Timed out waiting for URL to change: {str(e)}")
+            continue
+        # Hide the adds and other clutter
+        for element_id in clutter:
+            try:
+                element = driver.find_element_by_id(element_id)
+                driver.execute_script("arguments[0].style.visibility='hidden';", element)
+            except Exception as e:
+                print(f"Could not hide element with id '{element_id}'. Error: {str(e)}")
+        # parse the page content
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-    # define a filename based on the country and coordinates
-    filename = get_next_filename(image_dir, country)
-    filename = os.path.join(image_dir, filename)
+        # Get the coordinates from the URL
+        path = urlparse(driver.current_url).path
+        lat, lon = path.split('/')[2].split('@')[1].split(',')[0:2]
+        print(lat, lon)
+        # get user input for classes
+        classes = []
+        for j in range(1, 12):  # 1 to 10
+            class_input = input(f"Is it {landscape_classes[j]} (y,n): ")
+            if class_input == "y":
+                class_val = 1
+            else:
+                class_val = 0
+            classes.append(class_val)
 
-    # take a screenshot and save the image
-    driver.save_screenshot(filename)
+        # extract location info
+        location = geolocator.reverse(f"{lat}, {lon}", exactly_one=True)
 
-    # fill in the data list
-    data_list.append({
-        'country': country,
-        'image_path': filename,
-        'latitude': lat,
-        'longitude': lon,
-        landscape_classes[1]: classes[0],
-        landscape_classes[2]: classes[1],
-        landscape_classes[3]: classes[2],
-        landscape_classes[4]: classes[3],
-        landscape_classes[5]: classes[4],
-        landscape_classes[6]: classes[5],
-        landscape_classes[7]: classes[6],
-        landscape_classes[8]: classes[7],
-        landscape_classes[9]: classes[8],
-        landscape_classes[10]: classes[9],
-        landscape_classes[11]: classes[10],
-    })
+        # Get the country from the location
+        country = location.raw['address'].get('country', '')
+        print(country)
+        # define a filename based on the country and coordinates
+        filename = get_next_filename(image_dir, country)
+        filename = os.path.join(image_dir, filename)
 
-driver.quit()
+        # take a screenshot and save the image
+        driver.save_screenshot(filename)
 
-# convert the list to a DataFrame and save as CSV
-df = pd.DataFrame(data_list)
-df.to_csv('image_data.csv', index=False)
+        # fill in the data list
+        data_list.append({
+            'country': country,
+            'image_path': filename,
+            'latitude': lat,
+            'longitude': lon,
+            landscape_classes[1]: classes[0],
+            landscape_classes[2]: classes[1],
+            landscape_classes[3]: classes[2],
+            landscape_classes[4]: classes[3],
+            landscape_classes[5]: classes[4],
+            landscape_classes[6]: classes[5],
+            landscape_classes[7]: classes[6],
+            landscape_classes[8]: classes[7],
+            landscape_classes[9]: classes[8],
+            landscape_classes[10]: classes[9],
+            landscape_classes[11]: classes[10],
+        })
+
+    driver.quit()
+
+    # convert the list to a DataFrame and save as CSV
+    df = pd.DataFrame(data_list)
+    df.to_csv('image_data.csv', index=False)

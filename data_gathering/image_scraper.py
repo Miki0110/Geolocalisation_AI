@@ -1,6 +1,6 @@
 import os
-import time
 import random
+import numpy as np
 from pathlib import Path
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -13,28 +13,64 @@ import atexit
 from urllib.parse import urlparse
 from geopy.geocoders import Nominatim
 
-clutter = ['titlecard', 'id-play', 'minimap']
+# List of IDs that clutter the webpage
+clutter = ['titlecard', 'play', 'minimap']
 
-landscape_classes = {1: "Mountain/hill",
-                     2: "Forest/wood",
-                     3: "Desert",
-                     4: "Beach/Coast",
-                     5: "Plains",
-                     6: "Urban",
-                     7: "Sub-Urban",
-                     8: "Rural",
-                     9: "small road",
-                     10: "Highway",
-                     11: "Snow/Ice"}
+# Road classes
+road_classes = {1: "Highways (multiple lanes, long distance travel)",
+                2: "Urban roads (roads in big cities, towns, villages)",
+                3: "Country Roads (fewer lanes, near rural areas)",
+                4: "Mountain passes (roads through mountainous areas, guard rails)",
+                5: "Coastal roads (roads near the ocean, beaches, cliffs)",
+                6: "Dirt roads (unpaved / gravel roads)",
+                7: "Desert roads (roads through deserts, sand dunes)",
+                8: "Tunnel (underground roads)",
+                9: "Bridges (roads that cross over water)",
+                10: "None (no roads in the image)"
+                }
+# Background classes
+background_classes = {1: "Urban (Cityscapes, high-rise buildings, busy streets)",
+                      2: "Suburban (Houses, small buildings, quiet streets)",
+                      3: "Rural (Fields, farms, forests, mountains, lakes)",
+                      4: "Mountainous (Mountains, hills, cliffs, valleys)",
+                      5: "Coastal (Beaches, oceans, lakes, rivers, boats)",
+                      6: "Forest (Primary vegetation is trees, forests, jungles)",
+                      7: "Desert (Sandy areas, sand dunes, cacti, dry areas)",
+                      8: "Wetlands (Swamps, marshes, bogs, wet areas)",
+                      9: "Snowy (Snow, ice, glaciers, frozen lakes)",
+                      10: "Agricultural (Farms, fields, crops, livestock)"
+                      }
 
 
+# Get a random world coord, numbers based on me trying to avoid the ocean
 def get_random_coordinates():
-    # Latitude (y) can be between -90 and 90
-    latitude = random.uniform(-30, 90)
-    # Longitude (x) can be between -180 and 180
-    longitude = random.uniform(-90, 160)
-    return latitude, longitude
+    # Read the data (use the first 19 columns, as some city names include tabs)
+    df = pd.read_csv('cities5000.txt', sep='\t', header=None, usecols=range(19), low_memory=False)
 
+    # Define the column names
+    column_names = ['geonameid', 'name', 'asciiname', 'alternatenames', 'latitude', 'longitude',
+                    'feature class', 'feature code', 'country code', 'cc2', 'admin1 code',
+                    'admin2 code', 'admin3 code', 'admin4 code', 'population', 'elevation',
+                    'dem', 'timezone', 'modification date']
+
+    df.columns = column_names
+
+    # Remove rows where 'country code' is NaN
+    df = df.dropna(subset=['country code'])
+
+    # Group the data by country
+    grouped = df.groupby('country code')
+
+    # Select a random country
+    random_country = np.random.choice(df['country code'].unique())
+
+    # Select a random city from that country
+    random_city = grouped.get_group(random_country).sample()
+
+    return random_city['latitude'].values[0], random_city['longitude'].values[0]
+
+
+# Registers for exit
 def save_data_on_exit():
     if data_list:
         # Check if file exists
@@ -49,10 +85,14 @@ def save_data_on_exit():
             df.to_csv('image_data.csv', mode='w', header=True, index=False)
 
         print('Data saved!')
+
+
 def quit_driver():
     if driver:
         driver.quit()
         print("Driver closed!")
+
+
 # Register the functions to be called on exit
 atexit.register(save_data_on_exit)
 atexit.register(quit_driver)
@@ -97,7 +137,7 @@ if __name__ == "__main__":
 
     for i in range(num_images):
         lat, lon = get_random_coordinates()
-        driver.get(URL+f'@{lat},{lon},3z')
+        driver.get(URL + f'@{lat},{lon},6z')
         # Wait for the page to load
         try:
             element_present = EC.presence_of_element_located((By.CLASS_NAME, 'q2sIQ'))
@@ -108,15 +148,26 @@ if __name__ == "__main__":
         # Find pegman (Street View icon)
         pegman = driver.find_element_by_class_name('q2sIQ')
 
+        # Adjust these numbers according to your screen resolution
+        window_size = driver.get_window_size()
+        screen_width = window_size['width']
+        screen_height = window_size['height']
+
         # Generate random location on screen for drop
-        drop_x = -random.randint(50, 700)  # Adjust these numbers according to your screen resolution
-        drop_y = -random.randint(50, 500)  # Adjust these numbers according to your screen resolution
+        center_x = screen_width // 2 - 50
+        center_y = screen_height // 2 - 150
+
+        drop_x_range = (center_x - 100, center_x + 100)  # Adjust the range as desired
+        drop_y_range = (center_y - 150, center_y + 150)  # Adjust the range as desired
+
+        drop_x = -random.randint(*drop_x_range)
+        drop_y = -random.randint(*drop_y_range)
 
         # Perform drag and drop action
         AC(driver).drag_and_drop_by_offset(pegman, drop_x, drop_y).perform()
         # Wait for the URL to change
         try:
-            WebDriverWait(driver, 5).until(EC.url_contains("/data=!"))
+            WebDriverWait(driver, 3).until(EC.url_contains("/data=!"))
         except Exception as e:
             print(f"Timed out waiting for URL to change: {str(e)}")
             continue
@@ -134,18 +185,36 @@ if __name__ == "__main__":
         path = urlparse(driver.current_url).path
         lat, lon = path.split('/')[2].split('@')[1].split(',')[0:2]
         print(lat, lon)
+
+        # extract location info
+        location = geolocator.reverse(f"{lat}, {lon}", exactly_one=True, language='en')
+        if location is None:
+            continue
+
+        # Ask if the image is fine or not
+        answer = input("Is this an okay image?")
+        if (answer != "y") and (answer != "yes"):
+            continue
         # get user input for classes
-        classes = []
-        for j in range(1, 12):  # 1 to 10
-            class_input = input(f"Is it {landscape_classes[j]} (y,n): ")
+        road_input = []
+        print("Classification of road types")
+        for j in range(1, len(road_classes)+1):  # 1 to 10
+            class_input = input(f"Is it {road_classes[j]} (y,n): ")
             if class_input == "y":
                 class_val = 1
             else:
                 class_val = 0
-            classes.append(class_val)
+            road_input.append(class_val)
 
-        # extract location info
-        location = geolocator.reverse(f"{lat}, {lon}", exactly_one=True)
+        background_input = []
+        print("Classification of background types")
+        for j in range(1, len(background_classes) + 1):  # 1 to 10
+            class_input = input(f"Is it {background_classes[j]} (y,n): ")
+            if class_input == "y":
+                class_val = 1
+            else:
+                class_val = 0
+            background_input.append(class_val)
 
         # Get the country from the location
         country = location.raw['address'].get('country', '')
@@ -158,26 +227,17 @@ if __name__ == "__main__":
         driver.save_screenshot(filename)
 
         # fill in the data list
-        data_list.append({
+        data = {
             'country': country,
             'image_path': filename,
             'latitude': lat,
-            'longitude': lon,
-            landscape_classes[1]: classes[0],
-            landscape_classes[2]: classes[1],
-            landscape_classes[3]: classes[2],
-            landscape_classes[4]: classes[3],
-            landscape_classes[5]: classes[4],
-            landscape_classes[6]: classes[5],
-            landscape_classes[7]: classes[6],
-            landscape_classes[8]: classes[7],
-            landscape_classes[9]: classes[8],
-            landscape_classes[10]: classes[9],
-            landscape_classes[11]: classes[10],
-        })
+            'longitude': lon
+        }
 
-    driver.quit()
+        for idx, val in enumerate(road_input, start=1):
+            data[road_classes[idx]] = val
 
-    # convert the list to a DataFrame and save as CSV
-    df = pd.DataFrame(data_list)
-    df.to_csv('image_data.csv', index=False)
+        for idx, val in enumerate(background_input, start=1):
+            data[background_classes[idx]] = val
+
+        data_list.append(data)

@@ -1,7 +1,13 @@
-# Ignore pth files
+# Ignore files
 *.pth
 *.npy
+*.png
+*.jpg
+*.jpeg
+*.txt
+*.csv
+*.exe
 
-# Ignore .idea folder
+# Ignore folders
 /.idea
 /utils/runs

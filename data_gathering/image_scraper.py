@@ -45,7 +45,7 @@ background_classes = {1: "Urban (Cityscapes, high-rise buildings, busy streets)"
 # Get a random world coord, numbers based on me trying to avoid the ocean
 def get_random_coordinates():
     # Read the data (use the first 19 columns, as some city names include tabs)
-    df = pd.read_csv('cities5000.txt', sep='\t', header=None, usecols=range(19), low_memory=False)
+    df = pd.read_csv('cities15000.txt', sep='\t', header=None, usecols=range(19), low_memory=False)
 
     # Define the column names
     column_names = ['geonameid', 'name', 'asciiname', 'alternatenames', 'latitude', 'longitude',
@@ -59,13 +59,14 @@ def get_random_coordinates():
     df = df.dropna(subset=['country code'])
 
     # Group the data by country
-    grouped = df.groupby('country code')
+    #grouped = df.groupby('country code')
 
     # Select a random country
-    random_country = np.random.choice(df['country code'].unique())
+    #random_country = np.random.choice(df['country code'].unique())
 
     # Select a random city from that country
-    random_city = grouped.get_group(random_country).sample()
+    #random_city = grouped.get_group(random_country).sample()
+    random_city = df.sample()
 
     return random_city['latitude'].values[0], random_city['longitude'].values[0]
 
@@ -154,11 +155,11 @@ if __name__ == "__main__":
         screen_height = window_size['height']
 
         # Generate random location on screen for drop
-        center_x = screen_width // 2 - 50
-        center_y = screen_height // 2 - 150
+        center_x = screen_width // 2 - 200
+        center_y = screen_height // 2 - 25
 
-        drop_x_range = (center_x - 100, center_x + 100)  # Adjust the range as desired
-        drop_y_range = (center_y - 150, center_y + 150)  # Adjust the range as desired
+        drop_x_range = (center_x - 100, center_x + 100)
+        drop_y_range = (center_y - 50, center_y + 50)
 
         drop_x = -random.randint(*drop_x_range)
         drop_y = -random.randint(*drop_y_range)

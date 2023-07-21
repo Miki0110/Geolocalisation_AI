@@ -1,5 +1,8 @@
 import os
+#import pandas as pd
+import csv
 import numpy as np
+import cv2
 import torch
 import sys
 from geopy.geocoders import Nominatim
@@ -8,6 +11,7 @@ from torchvision import transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader, random_split
 import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -66,6 +70,43 @@ class GeoLocationDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+
+class ContextDataset(Dataset):
+    def __init__(self, csv_file, root_dir, transform=None, road=True):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.road = road
+
+        self.data_frame = []
+        with open(csv_file, 'r') as file:
+            csv_reader = csv.reader(file)
+            next(csv_reader)  # Skip header
+            for row in csv_reader:
+                self.data_frame.append(row)
+
+    def __len__(self):
+        return len(self.data_frame)
+
+    def __getitem__(self, idx):
+        img_name = os.path.join(self.root_dir, self.data_frame[idx][1])
+        image = cv2.cvtColor(cv2.imread(img_name), cv2.COLOR_BGR2RGB)
+        image = image / 255.0  # Normalize to [0, 1]
+
+        country = self.data_frame[idx][0]
+        latitude = float(self.data_frame[idx][2])
+        longitude = float(self.data_frame[idx][3])
+        labels = [float(i) for i in self.data_frame[idx][4:14]] if self.road else [float(i) for i in
+                                                                                   self.data_frame[idx][14:]]
+
+        sample = {'image': image, 'country': country, 'latitude': latitude,
+                  'longitude': longitude, 'labels': torch.from_numpy(np.array(labels))}
+
+
+        if self.transform:
+            sample['image'] = self.transform(image=sample['image'])['image']
+
+        return sample
+
 # Function to get the data loaders
 def get_dataloaders(root_dir, transform, batch_size, num_workers = 1, split_set=False):
     dataset = GeoLocationDataset(root_dir=root_dir, transform=transform)
@@ -91,11 +132,12 @@ def get_dataloaders(root_dir, transform, batch_size, num_workers = 1, split_set=
 # Debugging to check if the dataset works
 if __name__ == "__main__":
     # Define the transformation
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
+    transform = A.Compose([
+        A.Resize(224, 224),
+        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
+        ToTensorV2()
     ])
+    r"""
     dir = r'C:\Users\mikip\Pictures\50k_countryonly'
     # Create datasets
     datasets = get_dataloaders(root_dir=dir, transform=transform, batch_size=12, num_workers= 0, split_set=True)
@@ -114,3 +156,22 @@ if __name__ == "__main__":
 
         # Print the first label to check if the coordinates make sense
         print("First label:", labels[0])
+    """
+    # The following code is for testing the context dataset
+    csv_file = r'C:\Users\mikip\Documents\Geolocalisation_AI\data_gathering\image_data.csv'
+    dir = r'C:\Users\mikip\Documents\Geolocalisation_AI\data_gathering'
+
+    dataset = ContextDataset(csv_file=csv_file, root_dir=dir, transform=transform, road=True)
+    data_iter = iter(dataset)
+
+    # Get a batch of data
+    images, labels = next(data_iter)
+
+    # Print the shapes and device of the images and labels
+    print("Images shape:", images.shape)
+    print("Images device:", images.device)
+    print("Labels shape:", labels.shape)
+    print("Labels device:", labels.device)
+
+    # Print the first label to check if the coordinates make sense
+    print("First label:", labels[0])

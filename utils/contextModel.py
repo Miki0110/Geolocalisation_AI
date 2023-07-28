@@ -9,8 +9,8 @@ from packaging import version
 import torch.optim as optim
 import sys
 from utils.dataLoaders.dataLoader import DataSet
+from utils.dataLoaders.contextDataset import ContextDataset
 from utils.dataLoaders.geoLocationDataset import GeoLocationDataset
-from utils.contextModel import ContextModel
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.tensorboard import SummaryWriter
@@ -18,13 +18,12 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-class ResnetClassifier(torch.nn.Module):
+class ContextModel(torch.nn.Module):
     """
-    GeoLocationClassifier class
-    Uses the resnet101_2 model from torchvision
+    Context model for the geolocation AI
     """
-    def __init__(self, num_classes, road_model_path, bg_model_path, resnet_version=101_2):
-        super(ResnetClassifier, self).__init__()
+    def __init__(self, num_classes, resnet_version=101_2):
+        super(ContextModel, self).__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Check torchvision version
@@ -61,50 +60,15 @@ class ResnetClassifier(torch.nn.Module):
         for param in self.resnet.parameters():
             param.requires_grad = False
 
-        # Get the feature length
+        # Change the final layer
         num_features = self.resnet.fc.in_features
-
-        # Load road and background models
-        self.bg_model = ContextModel(10, resnet_version=50)
-        self.road_model = ContextModel(10, resnet_version=50_2)
-        bg_checkpoint = torch.load(bg_model_path)
-        road_checkpoint = torch.load(road_model_path)
-        self.bg_model.load_state_dict(bg_checkpoint['model_state_dict'])
-        self.road_model.load_state_dict(road_checkpoint['model_state_dict'])
-
-        # Set the models to evaluation mode
-        #self.bg_model.eval()
-        #self.road_model.eval()
-
-        # Modify the final layer to take into account the features from the other two models
-        num_features += self.road_model.resnet.fc.out_features
-        num_features += self.bg_model.resnet.fc.out_features
-
-        # Remove the last fully connected layer
-        modules = list(self.resnet.children())[:-1]
-
-        # Define the resnet_conv to include all layers up to the fc layer
-        self.resnet_conv = torch.nn.Sequential(*modules).to(self.device)
-
         self.resnet.fc = torch.nn.Linear(num_features, num_classes)
 
         # Move the model to the device
         self.resnet = self.resnet.to(self.device)
 
     def forward(self, x):
-        # Forward through the context models
-        road_features = self.road_model(x)
-        bg_features = self.bg_model(x)
-
-        # Forward through the resnet conv layers
-        x = self.resnet_conv(x)
-        x = x.view(x.size(0), -1)  # flatten the tensor
-
-        # Concatenate the features
-        x = torch.cat((road_features, bg_features, x), dim=1)
-
-        # Forward through the final layer
-        x = self.resnet.fc(x)
+        x = self.resnet(x)
         return x
 
 
@@ -115,7 +79,7 @@ def calculate_accuracy(outputs, labels):
     return correct / len(pred)
 
 
-def train_model(model, dataloader, criterion, optimizer, num_epochs, session_name="model", start_epoch=0):
+def train_model(model, dataloader, criterion, optimizer, num_epochs, session_name="model", start_epoch=0, road=None):
     """
     Trainer for the model
     Args:
@@ -153,9 +117,15 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
 
             # Calculate the running loss
             running_loss += loss.item() * inputs.size(0)
-            # Calculate the running accuracy
-            _, preds = torch.max(outputs, 1)  # Get the best guess from the output
-            running_corrects += torch.sum(preds == labels.data).double()  # Check how many are correct
+            if road is None:
+                # Calculate the running accuracy
+                _, preds = torch.max(outputs, 1)  # Get the best guess from the output
+                running_corrects += torch.sum(preds == labels.data).double()  # Check how many are correct
+            else:
+                preds = torch.sigmoid(outputs) > 0.5
+                corrects = (preds == labels).float()
+                accuracy = corrects.mean().item()
+                running_corrects += accuracy  # Add it to your running total
             total_samples += labels.size(0)
 
             progress_bar.set_description(
@@ -183,6 +153,9 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
             'loss': epoch_loss,
             'accuracy': epoch_acc,
         }, f'model_checkpoints/{session_name}_checkpoint_{epoch}.pth')
+        # Clear memory
+        torch.cuda.empty_cache()
+        gc.collect()
 
     print('Training complete')
     writer.close()
@@ -224,26 +197,24 @@ if __name__ == "__main__":
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image (This is for the pretrained model)
         ToTensorV2(),
     ])
-    session_name = "context_combined_resnet101_2"
-    dir_path = r'C:\Users\mikip\Pictures\50k_countryonly'
+    session_name = "background"
+    dir = r'C:\Users\mikip\Documents\Geolocalisation_AI\data_gathering'
 
     # Hyperparameters
-    num_classes = len(os.listdir(dir_path))  # amount of countries
+    # num_classes = len(os.listdir(dir))  # amount of countries
+    num_classes = 10
     num_epochs = 50
     learning_rate = 0.1
 
-    resnet_version = 101_2
-    dataloader = DataSet(root_dir=dir_path, loader=GeoLocationDataset, transform=transform)
-    dataloader.get_dataloaders(64)
+    resnet_version = 50
+    dataloader = DataSet(root_dir=dir, loader=ContextDataset, transform=transform)
+    dataloader.get_dataloaders(64, road=False)
     train_loader = dataloader.train_set
 
-    # Context model paths
-    road_model_path = r'C:\Users\mikip\Documents\Geolocalisation_AI\utils\model_checkpoints\early_roadset.pth'
-    bg_model_path = r'C:\Users\mikip\Documents\Geolocalisation_AI\utils\model_checkpoints\early_background.pth'
-    model = ResnetClassifier(num_classes, road_model_path, bg_model_path, resnet_version=resnet_version)
+    model = ContextModel(num_classes, resnet_version=resnet_version)
 
     # Define a loss function
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.BCEWithLogitsLoss()
 
     # Define an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -259,4 +230,4 @@ if __name__ == "__main__":
         model, optimizer, start_epoch = load_checkpoint(model, optimizer, checkpoint_file)
 
     # Call the training function
-    train_model(model, train_loader, criterion, optimizer, num_epochs, start_epoch=start_epoch, session_name=session_name)
+    train_model(model, train_loader, criterion, optimizer, num_epochs, start_epoch=start_epoch, session_name=session_name, road=False)

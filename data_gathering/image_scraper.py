@@ -12,6 +12,9 @@ from selenium.webdriver.common.action_chains import ActionChains as AC
 import atexit
 from urllib.parse import urlparse
 from geopy.geocoders import Nominatim
+import tkinter as tk
+from tkinter import messagebox
+
 
 # List of IDs that clutter the webpage
 clutter = ['titlecard', 'play', 'minimap']
@@ -42,6 +45,56 @@ background_classes = {1: "Urban (Cityscapes, high-rise buildings, busy streets)"
                       }
 
 
+def get_classes_via_gui(classes_dict):
+    # Create a new window
+    root = tk.Tk()
+
+    # Create a list to store the checkbutton variables
+    check_vars = []
+
+    # variable to store whether the image is skipped
+    skip_image = tk.BooleanVar(value=False)
+
+    # List to store the selected classes
+    selected_classes = []
+
+    # function to get and store selected checkboxes
+    def get_selected_classes():
+        nonlocal selected_classes
+        selected_classes = []
+        for i, check_var in enumerate(check_vars):
+            if check_var.get() == 1:
+                selected_classes.append(1)
+            else:
+                selected_classes.append(0)
+        root.destroy()
+
+    def skip():
+        skip_image.set(True)
+        root.destroy()
+
+    # Add a checkbutton for each class
+    for idx, road_class in classes_dict.items():
+        check_var = tk.IntVar()
+        check_vars.append(check_var)
+        check = tk.Checkbutton(root, text=road_class, variable=check_var)
+        check.pack()
+
+    # Add a button that will store the selected classes and destroy the window when clicked
+    button = tk.Button(root, text="OK", command=get_selected_classes)
+    button.pack()
+
+    # Add a 'Skip' button
+    skip_button = tk.Button(root, text="Skip", command=skip)
+    skip_button.pack()
+
+    root.mainloop()
+
+    if skip_image.get():
+        return None
+    else:
+        return selected_classes
+
 # Get a random world coord, numbers based on me trying to avoid the ocean
 def get_random_coordinates():
     # Read the data (use the first 19 columns, as some city names include tabs)
@@ -58,14 +111,6 @@ def get_random_coordinates():
     # Remove rows where 'country code' is NaN
     df = df.dropna(subset=['country code'])
 
-    # Group the data by country
-    #grouped = df.groupby('country code')
-
-    # Select a random country
-    #random_country = np.random.choice(df['country code'].unique())
-
-    # Select a random city from that country
-    #random_city = grouped.get_group(random_country).sample()
     random_city = df.sample()
 
     return random_city['latitude'].values[0], random_city['longitude'].values[0]
@@ -121,7 +166,8 @@ if __name__ == "__main__":
     # Get current folder
     curr_dir = os.path.dirname(os.path.abspath(__file__))
     # initialize webdriver
-    driver = webdriver.Chrome(os.path.join(curr_dir, 'chromedriver.exe'))
+    webdriver_path = os.path.join(curr_dir, 'chromedriver.exe')
+    driver = webdriver.Chrome(webdriver_path)
 
     # URL
     URL = 'https://www.google.com/maps/'
@@ -147,7 +193,7 @@ if __name__ == "__main__":
             print(f"Timed out waiting for page to load: {str(e)}")
 
         # Find pegman (Street View icon)
-        pegman = driver.find_element_by_class_name('q2sIQ')
+        pegman = driver.find_element(By.CLASS_NAME, 'q2sIQ')
 
         # Adjust these numbers according to your screen resolution
         window_size = driver.get_window_size()
@@ -175,7 +221,7 @@ if __name__ == "__main__":
         # Hide the adds and other clutter
         for element_id in clutter:
             try:
-                element = driver.find_element_by_id(element_id)
+                element = driver.find_element(By.ID, element_id)
                 driver.execute_script("arguments[0].style.visibility='hidden';", element)
             except Exception as e:
                 print(f"Could not hide element with id '{element_id}'. Error: {str(e)}")
@@ -193,29 +239,22 @@ if __name__ == "__main__":
             continue
 
         # Ask if the image is fine or not
-        answer = input("Is this an okay image?")
-        if (answer != "y") and (answer != "yes"):
-            continue
-        # get user input for classes
-        road_input = []
-        print("Classification of road types")
-        for j in range(1, len(road_classes)+1):  # 1 to 10
-            class_input = input(f"Is it {road_classes[j]} (y,n): ")
-            if class_input == "y":
-                class_val = 1
-            else:
-                class_val = 0
-            road_input.append(class_val)
+        #answer = input("Is this an okay image?")
+        #if (answer != "y") and (answer != "yes"):
+        #    continue
 
-        background_input = []
+        # get user input for classes via GUI
+        print("Classification of road types")
+        road_input = get_classes_via_gui(road_classes)
+        if road_input is None:
+            print("Skipping image...")
+            continue
+
         print("Classification of background types")
-        for j in range(1, len(background_classes) + 1):  # 1 to 10
-            class_input = input(f"Is it {background_classes[j]} (y,n): ")
-            if class_input == "y":
-                class_val = 1
-            else:
-                class_val = 0
-            background_input.append(class_val)
+        background_input = get_classes_via_gui(background_classes)
+        if background_input is None:
+            print("Skipping image...")
+            continue
 
         # Get the country from the location
         country = location.raw['address'].get('country', '')

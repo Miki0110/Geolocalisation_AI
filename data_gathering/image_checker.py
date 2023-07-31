@@ -13,9 +13,11 @@ class ImageReviewer:
         self.road_vars = {col: tk.IntVar() for col in self.data.columns[4:14]}  # start from 4th column
         self.bg_vars = {col: tk.IntVar() for col in self.data.columns[14:]}  # start from 14th column
 
+        # Create a frame for the image
         self.image_label = tk.Label(self.root)
         self.image_label.pack()
 
+        # Create a frame for the checkboxes
         self.road_frame = tk.Frame(self.root)
         self.road_frame.pack()
 
@@ -30,6 +32,7 @@ class ImageReviewer:
             cb = tk.Checkbutton(self.bg_frame, text=col, variable=var)
             cb.pack(side="left")
 
+        # Create a frame for the buttons
         self.button_frame = tk.Frame(self.root)
         self.button_frame.pack()
 

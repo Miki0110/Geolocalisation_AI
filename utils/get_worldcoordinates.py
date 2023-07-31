@@ -17,7 +17,7 @@ def get_country_coordinates(country):
 
 if __name__ == "__main__":
     # Folder path(s)
-    folder_path = [r"C:\Users\mikip\Pictures\50k_countryonly"]
+    folder_path = [r"C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only"]
 
     folder_names = []
     for path in folder_path:

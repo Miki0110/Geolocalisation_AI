@@ -225,7 +225,7 @@ if __name__ == "__main__":
         ToTensorV2(),
     ])
     session_name = "context_combined_resnet101_2"
-    dir_path = r'C:\Users\mikip\Pictures\50k_countryonly'
+    dir_path = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
 
     # Hyperparameters
     num_classes = len(os.listdir(dir_path))  # amount of countries

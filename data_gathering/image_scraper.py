@@ -167,7 +167,7 @@ if __name__ == "__main__":
     curr_dir = os.path.dirname(os.path.abspath(__file__))
     # initialize webdriver
     webdriver_path = os.path.join(curr_dir, 'chromedriver.exe')
-    driver = webdriver.Chrome(webdriver_path)
+    driver = webdriver.Chrome()
 
     # URL
     URL = 'https://www.google.com/maps/'
@@ -234,14 +234,9 @@ if __name__ == "__main__":
         print(lat, lon)
 
         # extract location info
-        location = geolocator.reverse(f"{lat}, {lon}", exactly_one=True, language='en')
+        location = geolocator.reverse(f"{lat}, {lon}", exactly_one=True, language='en', timeout=10)
         if location is None:
             continue
-
-        # Ask if the image is fine or not
-        #answer = input("Is this an okay image?")
-        #if (answer != "y") and (answer != "yes"):
-        #    continue
 
         # get user input for classes via GUI
         print("Classification of road types")

@@ -194,21 +194,21 @@ if __name__ == "__main__":
         A.Rotate(limit=20, p=0.5),  # Random rotation
         A.CoarseDropout(max_holes=4, max_height=40, max_width=40, p=0.5),  # Change the image by cutting out parts
         A.GaussNoise(p=0.5),  # Add gaussian noise
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image (This is for the pretrained model)
+        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
         ToTensorV2(),
     ])
-    session_name = "background"
-    dir = r'C:\Users\mikip\Documents\Geolocalisation_AI\data_gathering'
+    session_name = "road"
+    dir = r'C:\Users\Muku\Documents\Geolocalisation_AI\data_gathering'
+    road = True
 
     # Hyperparameters
-    # num_classes = len(os.listdir(dir))  # amount of countries
     num_classes = 10
     num_epochs = 50
     learning_rate = 0.1
 
     resnet_version = 50
     dataloader = DataSet(root_dir=dir, loader=ContextDataset, transform=transform)
-    dataloader.get_dataloaders(64, road=False)
+    dataloader.get_dataloaders(64, road=road)
     train_loader = dataloader.train_set
 
     model = ContextModel(num_classes, resnet_version=resnet_version)
@@ -230,4 +230,4 @@ if __name__ == "__main__":
         model, optimizer, start_epoch = load_checkpoint(model, optimizer, checkpoint_file)
 
     # Call the training function
-    train_model(model, train_loader, criterion, optimizer, num_epochs, start_epoch=start_epoch, session_name=session_name, road=False)
+    train_model(model, train_loader, criterion, optimizer, num_epochs, start_epoch=start_epoch, session_name=session_name, road=road)

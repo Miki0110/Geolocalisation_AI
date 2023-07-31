@@ -1,6 +1,4 @@
 from torch.utils.data import DataLoader, random_split
-from utils.dataLoaders.geoLocationDataset import GeoLocationDataset
-from utils.dataLoaders.contextDataset import ContextDataset
 
 class DataSet:
     def __init__(self, root_dir, loader, transform=None):

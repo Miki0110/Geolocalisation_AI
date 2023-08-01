@@ -36,34 +36,19 @@ class GeoLocationDataset(Dataset):
             image = self.transform(image=np.array(image))['image']
         return image.to(self.device), country.to(self.device)
 
+    def get_country_name(self, index):
+        return self.dataset.classes[self.dataset.targets[index]]
+
     def __len__(self):
         return len(self.dataset)
 
 
-
 # Debugging to check if the dataset works
 if __name__ == "__main__":
-    # Define the transformation
-    transform = A.Compose([
-        A.Resize(224, 224),
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # ImageNet stats
-        ToTensorV2()
-    ])
-    dir = r'C:\Users\mikip\Pictures\50k_countryonly'
-    # Create datasets
-    datasets = get_dataloaders(root_dir=dir, transform=transform, batch_size=12, num_workers=0, split_set=True)
+    dir_path = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
+    # Check if the dataclass is correct
+    dataset = GeoLocationDataset(root_dir=dir_path, transform=None)
 
-    for data_loader in datasets:
-        data_iter = iter(data_loader)
-
-        # Get a batch of data
-        images, labels = next(data_iter)
-
-        # Print the shapes and device of the images and labels
-        print("Images shape:", images.shape)
-        print("Images device:", images.device)
-        print("Labels shape:", labels.shape)
-        print("Labels device:", labels.device)
-
-        # Print the first label to check if the coordinates make sense
-        print("First label:", labels[0])
+    for i in range(100):
+        print(dataset.dataset.targets[i])
+        print(dataset.get_country_name(i))

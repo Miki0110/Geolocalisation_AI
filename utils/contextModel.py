@@ -122,12 +122,10 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
                 _, preds = torch.max(outputs, 1)  # Get the best guess from the output
                 running_corrects += torch.sum(preds == labels.data).double()  # Check how many are correct
             else:
-                preds = torch.sigmoid(outputs) > 0.5
-                corrects = (preds == labels).float()
-                accuracy = corrects.mean().item()
-                running_corrects += accuracy  # Add it to your running total
-            total_samples += labels.size(0)
-
+                preds = torch.sigmoid(outputs) > 0.8
+                # Exact match for the accuracy
+                running_corrects += (preds == labels).all(dim=1).float().sum().item()  # Add it to your running total
+            total_samples += labels.size(0)  # Update total number of samples
             progress_bar.set_description(
                 f'Epoch {epoch + 1}/{num_epochs} Loss: {loss.item():.4f} '
                 f'Accuracy: {(running_corrects / total_samples) * 100:.2f}%')
@@ -137,8 +135,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
         # Print the average scores
         epoch_loss = running_loss / len(dataloader.dataset)
         epoch_acc = running_corrects / total_samples
-        print(f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} '
-            f'Average Accuracy: {epoch_acc*100:.2f}%')
+        print(f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f} ')
 
         # Write it into the tensorboard
         writer.add_scalar('Training Loss', epoch_loss, epoch)
@@ -197,17 +194,17 @@ if __name__ == "__main__":
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
         ToTensorV2(),
     ])
-    session_name = "road"
-    dir = r'C:\Users\Muku\Documents\Geolocalisation_AI\data_gathering'
-    road = True
+    session_name = "background"
+    dir_path = r'C:\Users\Muku\Documents\Geolocalisation_AI\data_gathering'
+    road = False
 
     # Hyperparameters
     num_classes = 10
     num_epochs = 50
     learning_rate = 0.1
 
-    resnet_version = 50
-    dataloader = DataSet(root_dir=dir, loader=ContextDataset, transform=transform)
+    resnet_version = 152
+    dataloader = DataSet(root_dir=dir_path, loader=ContextDataset, transform=transform)
     dataloader.get_dataloaders(64, road=road)
     train_loader = dataloader.train_set
 

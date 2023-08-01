@@ -1,88 +1,131 @@
 import sys
 import os
-import cv2
 import numpy as np
 import torch
 import random
-from torchvision import transforms as T
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.model import GeoLocationClassifier
+from utils.model import ResnetClassifier
+import tkinter as tk
+from PIL import Image, ImageTk
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 ### INSERT IMAGE FOLDER PATH HERE ###
-image_path = r"C:\Users\mikip\Pictures\50k_countryonly"
+image_path = r"C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only"
 NUM_TESTS = 50
 
+class ImagesIterator:
+    def __init__(self, root, model, COORDINATES):
+        self.root = root
+        self.model = model
+        self.COORDINATES = list(COORDINATES.keys())
+        self.window = tk.Tk()
+        self.images = self._get_all_images()
+        if len(self.images) == 0:
+            raise ValueError("No images found in the directory")
+        self.index = 0
 
-def get_all_images(root):
-    images = []
-    for subdir, dirs, files in os.walk(root):
-        for file in files:
-            # Check if the file is an image (you can add more types if needed)
-            if file.endswith(('.png', '.jpg', '.jpeg')):
-                images.append(os.path.join(subdir, file))
-    return images
+    def current(self):
+        return self.images[self.index]
 
+    def next_image(self):
+        self.index = (self.index + 1) % len(self.images)
+        self.predict_and_display()
 
-# Get the paths to the model folder
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-npy_file_path = os.path.join(parent_dir, 'utils', 'country_cord.npy')
+    def prev_image(self):
+        self.index = (self.index - 1) % len(self.images)
+        self.predict_and_display()
 
-# Load the country coordinates
-COORDINATES_CACHE = np.load(npy_file_path, allow_pickle=True).item()
-print(COORDINATES_CACHE)
+    def predict_and_display(self):
+        model = self.model
+        window = self.window
+        # Clear the window
+        for widget in window.winfo_children():
+            widget.destroy()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Initialize the model
-model = GeoLocationClassifier(num_classes=len(COORDINATES_CACHE)).to(device)
-
-# Load the saved model weights
-model_folder = os.path.join(parent_dir, 'utils', 'model_checkpoints')
-checkpoint = torch.load(os.path.join(model_folder, "early_101-2.pth"))  # path to the saved model
-model.load_state_dict(checkpoint['model_state_dict'])
-
-# Set the model to evaluation mode
-model.eval()
-
-# Transform for the images loaded
-transform = T.Compose([
-    T.ToPILImage(),  # because the image is a numpy array
-    T.Resize((200, 440)),
-    T.ToTensor(),
-    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-
-# Get all the images in the folder
-all_images = get_all_images(image_path)
-
-# Now you can use the model to make predictions
-with torch.no_grad():
-    for i in range(NUM_TESTS):
         # Load the image
-        image_path = random.sample(all_images, 1)[0]
-        img = cv2.imread(image_path)
-        pil_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # Apply the image to the model
-        inputs = transform(np.array(pil_img)).unsqueeze(0).to(device)
+        raw_image = Image.open(self.current())
 
-        temp_t = T.ToPILImage()
-        #torch_vers = temp_t(transform(np.array(img))).show()
+        # Convert the PIL Image to a NumPy array
+        np_image = np.array(raw_image)
 
-        outputs = model(inputs)
+        # Get actual country
+        actual_country = os.path.basename(os.path.dirname(self.current()))
 
-        # Apply softmax
-        outputs = torch.nn.functional.softmax(outputs, dim=1)
-        # Pick the 5 largest values
-        _, preds = torch.topk(outputs, 5, dim=1)
+        # Transformations to apply before feeding the image to the model
+        transform = A.Compose([
+            A.Resize(200, 440),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
+            ToTensorV2(),
+        ])
 
-        # Display the image and the prediction
-        cv2.imshow("Image", img)
-        for i, pred in enumerate(preds[0]):
-            print(f"Prediction {i + 1}: {list(COORDINATES_CACHE.keys())[pred.item()]}")
-            print(f"Probability: {outputs[0][pred.item()].item()}")
-        print("Actual:", os.path.basename(os.path.dirname(image_path)))
-        cv2.waitKey(0)
+        # Apply transformations and add batch dimension
+        image = transform(image=np_image)['image'].unsqueeze(0)
+        image = image.to(model.device)
+
+        # Make predictions
+        with torch.no_grad():
+            output = model(image)
+            probabilities = torch.nn.functional.softmax(output, dim=1)
+            probs, preds = torch.topk(probabilities, 5, dim=1)
+
+        # Display the image
+        window.image = ImageTk.PhotoImage(raw_image)
+        tk.Label(window, image=window.image).pack()
+
+        # Display the actual country
+        tk.Label(window, text=f'Actual country: {actual_country}').pack()
+
+        # Display the predictions
+        for i in range(5):
+            tk.Label(window, text=f'Country {self.COORDINATES[preds[0,i].item()]}: {probs[0,i].item() * 100:.2f}%').pack()
+
+        # Next and Previous buttons
+        tk.Button(window, text="Next", command=lambda: self.next_image()).pack(side=tk.RIGHT)
+        tk.Button(window, text="Previous", command=lambda: self.prev_image()).pack(side=tk.LEFT)
+
+    def _get_all_images(self):
+        images = []
+        for subdir, dirs, files in os.walk(self.root):
+            for file in files:
+                # Check if the file is an image (you can add more types if needed)
+                if file.endswith(('.png', '.jpg', '.jpeg')):
+                    images.append(os.path.join(subdir, file))
+        random.shuffle(images)
+        return images
+
+
+if __name__ == "__main__":
+    # Get the paths to the model folder
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    npy_file_path = os.path.join(parent_dir, 'utils', 'country_cord.npy')
+
+    # Load the country coordinates
+    COORDINATES_CACHE = np.load(npy_file_path, allow_pickle=True).item()
+    print(COORDINATES_CACHE)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Initialize the model
+    model = ResnetClassifier(len(COORDINATES_CACHE), 'road_notestset.pth', 'background_notestset.pth').to(device)
+
+    # Load the saved model weights
+    model_folder = os.path.join(parent_dir, 'utils', 'model_checkpoints')
+    checkpoint = torch.load(
+        os.path.join(model_folder, "early_context_combined_resnet101_2.pth"))  # path to the saved model
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    # Set the model to evaluation mode
+    model.eval()
+
+    # Create the iterator
+    iterator = ImagesIterator(image_path, model, COORDINATES_CACHE)
+
+    # Display the first image
+    iterator.predict_and_display()
+
+    # Start the GUI
+    iterator.window.mainloop()
+
+

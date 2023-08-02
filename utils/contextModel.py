@@ -71,6 +71,13 @@ class ContextModel(torch.nn.Module):
         x = self.resnet(x)
         return x
 
+    def extract_features(self, x):
+        # Create a new Sequential model excluding the last layer
+        resnet_features = torch.nn.Sequential(*(list(self.resnet.children())[:-1]))
+        x = resnet_features(x)  # Use all layers except the final one
+        x = x.view(x.size(0), -1)  # Flatten the output
+        return x
+
 
 def calculate_accuracy(outputs, labels):
     """Calculate classification accuracy."""

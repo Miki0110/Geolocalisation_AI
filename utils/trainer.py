@@ -7,6 +7,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.lossFunctions import GeographicalCrossEntropyLoss
@@ -35,8 +36,10 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
         start_epoch (int): Start epoch
         scheduler (torch.optim.lr_scheduler): Learning rate scheduler
     """
+    # Get Current time
+    curr_time = datetime.now().strftime("%H%M%S")
     # Set up a Summarywriter
-    writer = SummaryWriter(f'runs/{session_name}')
+    writer = SummaryWriter(f'runs/{session_name}_{curr_time}')
 
     train_loader = dataloader.train_set
     test_loader = dataloader.test_set
@@ -95,10 +98,10 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
         print(f'Epoch {epoch + 1}/{num_epochs} Average Loss: {epoch_loss:.4f}', f"Accuracy: {test_acc*100}%")
 
         # Write it into the tensorboard
-        writer.add_scalar('Training Loss', epoch_loss, epoch)
-        writer.add_scalar('Training Accuracy', epoch_acc*100, epoch)
-        writer.add_scalar('Test Loss', test_loss, epoch)
-        writer.add_scalar('Test Accuracy', test_acc*100, epoch)
+        writer.add_scalar('Loss/Training', epoch_loss, epoch)
+        writer.add_scalar('Accuracy/Training', epoch_acc*100, epoch)
+        writer.add_scalar('Loss/Test', test_loss, epoch)
+        writer.add_scalar('Accuracy/Test', test_acc*100, epoch)
 
         os.makedirs(f'model_checkpoints', exist_ok=True)
         # Save the model if it is the best one
@@ -138,9 +141,14 @@ def test_model(model, dataloader, criterion):
             running_corrects += torch.sum(preds == labels.data).double()
             total_samples += labels.size(0)
 
+            progress_bar.set_description(
+                f'Total samples: {total_samples}, '
+                f'running corrects: {running_corrects}, '
+                f'Accuracy: {(running_corrects / total_samples) * 100:.2f}%')
+
     epoch_loss = running_loss / len(dataloader.dataset)
     epoch_acc = running_corrects / total_samples
-    model.train() # set the model back to training mode
+    model.train()  # set the model back to training mode
     return epoch_loss, epoch_acc
 
 
@@ -181,7 +189,7 @@ if __name__ == '__main__':
     # Hyperparameters
     num_classes = len(os.listdir(dir_path))  # amount of countries
     num_epochs = 50
-    learning_rate = 0.1
+    learning_rate = 0.001
     batch_size = int(64 * 3)
 
     resnet_version = 101_2

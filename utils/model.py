@@ -71,7 +71,7 @@ class ResnetClassifier(torch.nn.Module):
         """
 
         # Introduce dropout
-        self.dropout = torch.nn.Dropout(0.5)
+        self.dropout = torch.nn.Dropout(0.3)
 
         # Modify the final layer to take into account the features from the other two models
         num_features += self.road_model.resnet.fc.in_features
@@ -84,10 +84,8 @@ class ResnetClassifier(torch.nn.Module):
         self.resnet_conv = torch.nn.Sequential(*modules).to(self.device)
 
         self.resnet.fc = torch.nn.Sequential(
-            torch.nn.Linear(num_features, 512),
-            torch.nn.ReLU(),
             self.dropout,
-            torch.nn.Linear(512, num_classes)
+            torch.nn.Linear(num_features, num_classes)
         ).to(self.device)
 
         # Move the model to the device
@@ -108,9 +106,6 @@ class ResnetClassifier(torch.nn.Module):
         # Forward through the final layer
         x = self.resnet.fc(x)
         return x
-
-
-
 
 
 # Debugging to check if the model works and cuda is available

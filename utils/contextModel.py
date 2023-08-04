@@ -25,7 +25,7 @@ class ContextModel(torch.nn.Module):
     def __init__(self, num_classes, resnet_version=101_2):
         super(ContextModel, self).__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        self.version = resnet_version
         # Check torchvision version
         if version.parse(torchvision.__version__) >= version.parse('0.13'):
             # Load pre-trained ResNet model
@@ -156,6 +156,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
             'accuracy': epoch_acc,
+            'model_version': model.version
         }, f'model_checkpoints/{session_name}_checkpoint_{epoch}.pth')
         # Clear memory
         torch.cuda.empty_cache()
@@ -201,16 +202,16 @@ if __name__ == "__main__":
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
         ToTensorV2(),
     ])
-    session_name = "background"
+    session_name = "road"
     dir_path = r'C:\Users\Muku\Documents\Geolocalisation_AI\data_gathering'
-    road = False
+    road = True
 
     # Hyperparameters
     num_classes = 10
     num_epochs = 50
-    learning_rate = 0.1
+    learning_rate = 0.01
 
-    resnet_version = 152
+    resnet_version = 50
     dataloader = DataSet(root_dir=dir_path, loader=ContextDataset, transform=transform)
     dataloader.get_dataloaders(64, road=road)
     train_loader = dataloader.train_set

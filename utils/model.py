@@ -48,34 +48,35 @@ class ResnetClassifier(torch.nn.Module):
                 raise ValueError("Invalid resnet version")
 
         # Freeze the layers
-        for param in self.resnet.parameters():
-            param.requires_grad = False
+        #for param in self.resnet.parameters():
+        #    param.requires_grad = False
 
         # Get the feature length
         num_features = self.resnet.fc.in_features
 
         # Load road and background models
-        self.bg_model = ContextModel(10, resnet_version=152)
-        self.road_model = ContextModel(10, resnet_version=50_2)
         bg_checkpoint = torch.load(os.path.join(model_folder, bg_model_name))
         road_checkpoint = torch.load(os.path.join(model_folder, road_model_name))
+
+        # Get the models
+        self.bg_model = ContextModel(10, resnet_version=bg_checkpoint['model_version'])
+        self.road_model = ContextModel(10, resnet_version=road_checkpoint['model_version'])
+
         self.bg_model.load_state_dict(bg_checkpoint['model_state_dict'])
         self.road_model.load_state_dict(road_checkpoint['model_state_dict'])
 
-        """
         # Set the models to evaluation mode
         for param in self.bg_model.parameters():
             param.requires_grad = False
         for param in self.road_model.parameters():
             param.requires_grad = False
-        """
 
         # Introduce dropout
         self.dropout = torch.nn.Dropout(0.3)
 
         # Modify the final layer to take into account the features from the other two models
-        num_features += self.road_model.resnet.fc.in_features
-        num_features += self.bg_model.resnet.fc.in_features
+        con_features = self.road_model.resnet.fc.out_features
+        con_features += self.bg_model.resnet.fc.out_features
 
         # Remove the last fully connected layer
         modules = list(self.resnet.children())[:-1]
@@ -83,9 +84,14 @@ class ResnetClassifier(torch.nn.Module):
         # Define the resnet_conv to include all layers up to the fc layer
         self.resnet_conv = torch.nn.Sequential(*modules).to(self.device)
 
+        # Add the new fully connected layers
         self.resnet.fc = torch.nn.Sequential(
             self.dropout,
-            torch.nn.Linear(num_features, num_classes)
+            torch.nn.Linear(num_features, 256),
+        ).to(self.device)
+        self.context_fc = torch.nn.Sequential(
+            torch.nn.ReLU(),
+            torch.nn.Linear(con_features+256, num_classes),
         ).to(self.device)
 
         # Move the model to the device
@@ -93,18 +99,21 @@ class ResnetClassifier(torch.nn.Module):
 
     def forward(self, x):
         # Forward through the context models
-        road_features = self.road_model.extract_features(x)
-        bg_features = self.bg_model.extract_features(x)
+        road_features = self.road_model(x)
+        bg_features = self.bg_model(x)
 
         # Forward through the resnet conv layers
         x = self.resnet_conv(x)
-        x = x.view(x.size(0), -1)  # flatten the tensor
+        # Flatten the features
+        x = torch.flatten(x, 1)
+        # Apply the bottleneck layer
+        x = self.resnet.fc(x)
 
         # Concatenate the features
         x = torch.cat((road_features, bg_features, x), dim=1)
 
         # Forward through the final layer
-        x = self.resnet.fc(x)
+        x = self.context_fc(x)
         return x
 
 
@@ -119,7 +128,6 @@ if __name__ == "__main__":
 
     # Create the model
     model = ResnetClassifier(10, "road_notestset.pth", "background_notestset.pth")
-
     # Apply the model
     output = model(x)
     print(output)

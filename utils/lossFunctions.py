@@ -58,7 +58,7 @@ class GeographicalCrossEntropyLoss(nn.Module):
         distances = torch.tensor(distances)
 
         # to get a single value representing the geographical loss for the batch
-        geo_loss = torch.mean(distances) / 1000  # Weighted by 1000 to make it comparable to CE loss
+        geo_loss = torch.mean(distances) / 500  # Weighted by 500 to make it comparable to CE loss
         return geo_loss
 
 if __name__ == "__main__":

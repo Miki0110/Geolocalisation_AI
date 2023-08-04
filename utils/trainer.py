@@ -6,7 +6,6 @@ import sys
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
 from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,6 +45,7 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
 
     model.train()  # set the model to training mode
     best_acc = 0.0 # Keep track of the best accuracy
+    best_loss = 100000000
     for epoch in range(start_epoch, num_epochs):
         running_loss = 0.0
         running_corrects = 0.0
@@ -115,7 +115,18 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs, session_nam
                 'train_accuracy': epoch_acc,
                 'test_loss': test_loss,
                 'test_accuracy': test_acc
-            }, f'model_checkpoints/{session_name}_checkpoint.pth')
+            }, f'model_checkpoints/{session_name}_checkpoint_acc.pth')
+        if test_loss < best_loss:
+            best_loss = test_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': epoch_loss,
+                'train_accuracy': epoch_acc,
+                'test_loss': test_loss,
+                'test_accuracy': test_acc
+            }, f'model_checkpoints/{session_name}_checkpoint_loss.pth')
 
     print('Training complete')
     writer.close()
@@ -183,16 +194,16 @@ if __name__ == '__main__':
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
         ToTensorV2(),
     ])
-    session_name = "context_resnet101_2_with_dropout"
+    session_name = "50_no_gradlock"
     dir_path = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
 
     # Hyperparameters
     num_classes = len(os.listdir(dir_path))  # amount of countries
     num_epochs = 50
-    learning_rate = 0.001
-    batch_size = int(64 * 3)
+    learning_rate = 0.01
+    batch_size = 32
 
-    resnet_version = 101_2
+    resnet_version = 50
     dataloader = DataSet(root_dir=dir_path, loader=GeoLocationDataset, transform=transform)
     dataloader.get_dataloaders(batch_size=batch_size, split_set=True)
 
@@ -206,7 +217,7 @@ if __name__ == '__main__':
 
     # Define an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
     # Ask the user if they want to load from a checkpoint
     load_checkpoint_decision = input("Do you want to load from a previous checkpoint? (yes/no): ")

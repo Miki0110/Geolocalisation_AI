@@ -113,7 +113,7 @@ if __name__ == "__main__":
     # Load the saved model weights
     model_folder = os.path.join(parent_dir, 'utils', 'model_checkpoints')
     checkpoint = torch.load(
-        os.path.join(model_folder, "context_resnet101_2_with_dropout"))  # path to the saved model
+        os.path.join(model_folder, "101_bye_uruguay_checkpoint_loss.pth"))  # path to the saved model
     model.load_state_dict(checkpoint['model_state_dict'])
 
     # Set the model to evaluation mode

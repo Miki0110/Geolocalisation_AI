@@ -48,8 +48,8 @@ class ResnetClassifier(torch.nn.Module):
                 raise ValueError("Invalid resnet version")
 
         # Freeze the layers
-        #for param in self.resnet.parameters():
-        #    param.requires_grad = False
+        for param in self.resnet.parameters():
+            param.requires_grad = False
 
         # Get the feature length
         num_features = self.resnet.fc.in_features

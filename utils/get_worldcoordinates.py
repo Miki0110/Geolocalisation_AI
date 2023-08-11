@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from geopy.geocoders import Nominatim
+from utils.dataLoaders.geoLocationDataset import GeoLocationDataset
 
 # Function to get the coordinates of a country
 def get_country_coordinates(country):
@@ -17,16 +18,11 @@ def get_country_coordinates(country):
 
 if __name__ == "__main__":
     # Folder path(s)
-    folder_path = [r"C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only"]
-
-    folder_names = []
-    for path in folder_path:
-        # Get the folder names
-        folder_names += os.listdir(path)
-
+    folder_path = r"C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only"
     country_cord = {}
+    dataset = GeoLocationDataset(root_dir=folder_path, transform=None)
     # Get the coordinates of each folder
-    for folder_name in folder_names:
+    for folder_name in dataset.dataset.classes:
         coords = get_country_coordinates(folder_name)
         print(folder_name, coords)
 

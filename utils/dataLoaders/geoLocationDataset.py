@@ -20,6 +20,7 @@ class GeoLocationDataset(Dataset):
         self.transform = transform
         self.dataset = ImageFolder(root=root_dir)
         self.datapos = []
+        print(self.dataset.class_to_idx)
         for data_class in self.dataset.classes:
             self.datapos.append(COORDINATES_CACHE[data_class])
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -194,16 +194,16 @@ if __name__ == '__main__':
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize the image
         ToTensorV2(),
     ])
-    session_name = "50_no_gradlock"
+    session_name = "101_bye_uruguay"
     dir_path = r'C:\Users\Muku\OneDrive - Aalborg Universitet\Geo_sets\50k_country_only'
 
     # Hyperparameters
     num_classes = len(os.listdir(dir_path))  # amount of countries
     num_epochs = 50
     learning_rate = 0.01
-    batch_size = 32
+    batch_size = int(64*2)
 
-    resnet_version = 50
+    resnet_version = 101_2
     dataloader = DataSet(root_dir=dir_path, loader=GeoLocationDataset, transform=transform)
     dataloader.get_dataloaders(batch_size=batch_size, split_set=True)
 
